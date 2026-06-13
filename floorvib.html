@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1b1f26">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>FloorVib — Heel-Drop Tester</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --concrete:#dfe1e4; --concrete-2:#eceef0; --chrome:#f6f7f8;
+    --ink:#14171c; --ink-soft:#5b626d; --line:#cdd1d6;
+    --screen:#1b1f26; --screen-2:#23282f; --screen-line:#333a44; --screen-ink:#aeb6c2;
+    --blue:#2f6fd6; --x:#27c24c; --y:#3b7be8; --z:#e23b2e;
+    --live:#e2362d; --amber:#e0a32a; --good:#27a35a;
+    --r:14px; --r-sm:9px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0;}
+  body{
+    font-family:'Inter',system-ui,sans-serif;
+    background:var(--concrete);
+    color:var(--ink);
+    line-height:1.45;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:560px; margin:0 auto; padding:14px 14px 120px;}
+
+  /* Header */
+  header{display:flex; align-items:baseline; justify-content:space-between; padding:6px 2px 12px;}
+  .brand{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:21px; letter-spacing:-.02em;}
+  .brand b{color:var(--blue);}
+  .brand .dot{display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--live); margin-left:4px; vertical-align:middle;}
+  .tag{font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--ink-soft); letter-spacing:.04em; text-transform:uppercase;}
+
+  /* The instrument "screen" */
+  .screen{
+    background:var(--screen); border-radius:var(--r);
+    padding:12px 12px 14px; margin-bottom:12px;
+    box-shadow:inset 0 1px 0 #2f3742, 0 1px 2px rgba(0,0,0,.18);
+    border:1px solid #11141a;
+  }
+  .screen-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;}
+  .screen-title{font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--screen-ink);}
+  .live-readout{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--screen-ink);}
+  .live-readout span{color:#fff;}
+  canvas{width:100%; display:block; border-radius:8px; background:var(--screen-2); touch-action:none;}
+  .legend{display:flex; gap:14px; margin-top:8px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--screen-ink);}
+  .legend i{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; vertical-align:middle;}
+  .axx{background:var(--x)} .axy{background:var(--y)} .axz{background:var(--z)}
+
+  /* Status pill */
+  .status{display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--screen-ink); margin-top:9px;}
+  .pill{width:9px; height:9px; border-radius:50%; background:#586474; transition:background .2s;}
+  .pill.armed{background:var(--amber); animation:pulse 1.1s infinite;}
+  .pill.rec{background:var(--live); animation:pulse .7s infinite;}
+  .pill.done{background:var(--good);}
+  @keyframes pulse{0%,100%{opacity:1} 50%{opacity:.35}}
+
+  /* Cards */
+  .card{background:var(--chrome); border:1px solid var(--line); border-radius:var(--r); padding:14px; margin-bottom:12px;}
+  .card h2{font-family:'Space Grotesk',sans-serif; font-size:13px; letter-spacing:.02em; text-transform:uppercase; color:var(--ink-soft); margin:0 0 10px;}
+
+  /* Big readouts */
+  .results{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .metric{background:#fff; border:1px solid var(--line); border-radius:var(--r-sm); padding:11px 12px;}
+  .metric .k{font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-soft);}
+  .metric .v{font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:23px; letter-spacing:-.01em; margin-top:3px;}
+  .metric .v small{font-size:12px; font-weight:500; color:var(--ink-soft);}
+  .metric.wide{grid-column:1/-1;}
+  .metric.hero{grid-column:1/-1; background:var(--screen); border-color:#11141a;}
+  .metric.hero .k{color:#8a93a1;}
+  .metric.hero .v{color:#fff; font-size:30px;}
+  .metric.hero .v small{color:#8a93a1;}
+
+  /* Controls */
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+  label.ctl{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-soft); display:flex; flex-direction:column; gap:5px; flex:1; min-width:120px;}
+  select, input[type=number]{
+    font-family:'IBM Plex Mono',monospace; font-size:14px; color:var(--ink);
+    background:#fff; border:1px solid var(--line); border-radius:var(--r-sm);
+    padding:9px 10px; width:100%;
+  }
+  .seg{display:flex; border:1px solid var(--line); border-radius:var(--r-sm); overflow:hidden; background:#fff;}
+  .seg button{flex:1; border:0; background:transparent; padding:9px 4px; font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--ink-soft); cursor:pointer;}
+  .seg button.on{background:var(--blue); color:#fff;}
+  .check{display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-soft); cursor:pointer; user-select:none;}
+  .check input{width:18px; height:18px; accent-color:var(--blue);}
+
+  /* Steps */
+  ol.steps{margin:0; padding-left:0; list-style:none; counter-reset:s;}
+  ol.steps li{counter-increment:s; position:relative; padding:7px 0 7px 34px; font-size:13.5px; border-bottom:1px solid var(--line);}
+  ol.steps li:last-child{border-bottom:0;}
+  ol.steps li::before{content:counter(s); position:absolute; left:0; top:7px; width:23px; height:23px; border-radius:50%; background:var(--blue); color:#fff; font-family:'IBM Plex Mono',monospace; font-size:12px; font-weight:600; display:flex; align-items:center; justify-content:center;}
+
+  /* Saved runs */
+  .runs{display:flex; flex-direction:column; gap:8px;}
+  .run{display:flex; align-items:center; gap:10px; background:#fff; border:1px solid var(--line); border-radius:var(--r-sm); padding:10px 11px;}
+  .run .id{font-family:'IBM Plex Mono',monospace; font-weight:600; font-size:13px;}
+  .run .meta{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-soft); flex:1;}
+  .run .meta b{color:var(--ink); font-weight:600;}
+  .run button{border:0; background:none; cursor:pointer; padding:6px; border-radius:6px; font-size:18px; line-height:1; color:var(--ink-soft);}
+  .run button:hover{background:var(--concrete-2);}
+  .empty{font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-soft); text-align:center; padding:18px 0;}
+
+  .btn{font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14px; border:1px solid var(--line); background:#fff; color:var(--ink); border-radius:var(--r-sm); padding:11px 14px; cursor:pointer; flex:1;}
+  .btn:active{transform:translateY(1px);}
+  .btn.ghost{background:transparent;}
+  .btn[disabled]{opacity:.4; cursor:default;}
+
+  /* Fixed record bar */
+  .dock{position:fixed; left:0; right:0; bottom:0; background:rgba(243,244,245,.92); backdrop-filter:blur(8px); border-top:1px solid var(--line); padding:10px 14px calc(10px + env(safe-area-inset-bottom)); z-index:20;}
+  .dock-inner{max-width:560px; margin:0 auto; display:flex; align-items:center; gap:12px;}
+  .rec-btn{width:64px; height:64px; border-radius:50%; border:4px solid #fff; background:var(--live); box-shadow:0 2px 10px rgba(226,54,45,.4); cursor:pointer; flex:none; transition:border-radius .15s;}
+  .rec-btn.recording{border-radius:18px; width:58px; height:58px;}
+  .rec-btn[disabled]{opacity:.35;}
+  .dock-info{flex:1; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-soft);}
+  .dock-info b{color:var(--ink); font-size:15px;}
+  .dock .btn{flex:none; min-width:96px;}
+
+  .note{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-soft); line-height:1.55; margin-top:8px;}
+  .banner{background:#fff5d6; border:1px solid #e6cf7a; color:#7a5d00; border-radius:var(--r-sm); padding:10px 12px; font-size:12.5px; margin-bottom:12px; font-family:'IBM Plex Mono',monospace; line-height:1.5;}
+  .hidden{display:none;}
+  a{color:var(--blue);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">Floor<b>Vib</b><span class="dot"></span></div>
+    <div class="tag">Heel-drop tester</div>
+  </header>
+
+  <div id="secureWarn" class="banner hidden"></div>
+
+  <!-- INSTRUMENT SCREEN -->
+  <div class="screen">
+    <div class="screen-head">
+      <div class="screen-title" id="screenTitle">Acceleration · time</div>
+      <div class="live-readout" id="liveReadout">z <span>—</span> m/s²</div>
+    </div>
+    <canvas id="timeCanvas" height="190"></canvas>
+    <div class="legend">
+      <span><i class="axx"></i>x</span><span><i class="axy"></i>y</span><span><i class="axz"></i>z</span>
+      <span style="margin-left:auto" id="rateTag">— Hz</span>
+    </div>
+    <div class="status"><span class="pill" id="pill"></span><span id="statusText">Idle — press record, then do the heel drop</span></div>
+  </div>
+
+  <!-- RESULTS (hidden until analysed) -->
+  <div class="card hidden" id="resultsCard">
+    <h2>Analysis</h2>
+    <div class="screen" style="margin-bottom:12px">
+      <div class="screen-head">
+        <div class="screen-title">FFT · frequency domain</div>
+        <div class="live-readout" id="peakTag">peak —</div>
+      </div>
+      <canvas id="fftCanvas" height="180"></canvas>
+      <div class="legend"><span id="fftAxisTag">z-axis</span><span style="margin-left:auto">0 – 30 Hz</span></div>
+    </div>
+    <div class="results">
+      <div class="metric hero"><div class="k">Fundamental frequency f₁</div><div class="v" id="rF1">—<small> Hz</small></div></div>
+      <div class="metric"><div class="k">Damping ζ (log. decr.)</div><div class="v" id="rZeta">—<small> %</small></div></div>
+      <div class="metric"><div class="k">ζ (envelope fit)</div><div class="v" id="rZetaEnv">—<small> %</small></div></div>
+      <div class="metric"><div class="k">Log. decrement λ</div><div class="v" id="rLambda">—</div></div>
+      <div class="metric"><div class="k">Peaks used (n)</div><div class="v" id="rPeaks">—</div></div>
+      <div class="metric"><div class="k">a<sub>RMS</sub> (selected axis)</div><div class="v" id="rRms">—<small> m/s²</small></div></div>
+      <div class="metric"><div class="k">Sample rate</div><div class="v" id="rRate">—<small> Hz</small></div></div>
+    </div>
+    <div class="note" id="rmsNote"></div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn" id="saveRunBtn">Save this run</button>
+      <button class="btn ghost" id="exportCurrentBtn">Export CSV</button>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="card">
+    <h2>Measurement settings</h2>
+    <div class="row" style="margin-bottom:12px">
+      <label class="ctl">Analysis axis
+        <div class="seg" id="axisSeg">
+          <button data-ax="0">X</button><button data-ax="1">Y</button>
+          <button data-ax="2" class="on">Z</button><button data-ax="3">|a|</button>
+        </div>
+      </label>
+    </div>
+    <div class="row" style="margin-bottom:12px">
+      <label class="ctl">Record duration (s)
+        <input type="number" id="durInput" value="10" min="2" max="60" step="1">
+      </label>
+      <label class="ctl">High-pass cutoff (Hz)
+        <input type="number" id="hpInput" value="1" min="0" max="10" step="0.5">
+      </label>
+    </div>
+    <div class="row">
+      <label class="check"><input type="checkbox" id="hannChk" checked> Hann window (FFT)</label>
+      <label class="check"><input type="checkbox" id="autostopChk" checked> Auto-stop at duration</label>
+    </div>
+    <div class="note">Z is vertical when the phone lies flat on the floor — leave it on Z for a standard heel-drop. High-pass ≥ 1 Hz removes slow drift before peak-picking (matches the iDynamics recommendation).</div>
+  </div>
+
+  <!-- PROCEDURE -->
+  <div class="card">
+    <h2>Heel-drop procedure</h2>
+    <ol class="steps">
+      <li>Place the phone flat on the floor at the test point and stand still so the trace shows only noise.</li>
+      <li>Press record. Wait for the “rest detected” state.</li>
+      <li>Lift both heels so you stand on your toes.</li>
+      <li>Bring both heels down forcefully onto the floor — one clean impact.</li>
+      <li>Stand still and let the floor ring down for the full duration.</li>
+      <li>Recording auto-stops; review the analysis, then save or export.</li>
+    </ol>
+  </div>
+
+  <!-- SAVED RUNS -->
+  <div class="card">
+    <h2>Saved runs</h2>
+    <div class="runs" id="runsList"><div class="empty">No runs saved yet.</div></div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn ghost" id="exportAllBtn" disabled>Export all (summary CSV)</button>
+      <button class="btn ghost" id="clearBtn" disabled>Clear all</button>
+    </div>
+    <div class="note">Runs persist on your phone between sessions. Per-run CSV columns: <code>time_ms, acc_x, acc_y, acc_z</code> (raw, m/s²). Load in pandas with <code>pd.read_csv(f)</code>.</div>
+  </div>
+
+  <div class="note" style="text-align:center; opacity:.8">
+    Browser sensor rate (~50–60 Hz) limits resolved frequencies to the Nyquist ≈ ½ of the measured rate shown above. Good for floor fundamentals; for the full 400 Hz of a thesis-grade rig you need a native sensor app.
+  </div>
+</div>
+
+<!-- RECORD DOCK -->
+<div class="dock">
+  <div class="dock-inner">
+    <button class="rec-btn" id="recBtn" aria-label="Record"></button>
+    <div class="dock-info" id="dockInfo">Ready<br><b id="dockTimer">0.0 s</b></div>
+    <button class="btn" id="analyzeBtn" disabled>Analyze</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ---------- safe storage (works on phone, degrades in sandbox) ---------- */
+const Store = (()=>{ let mem={}; let ok=true;
+  try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); }catch(e){ ok=false; }
+  return {
+    get(k){ try{ return ok?localStorage.getItem(k):mem[k]; }catch(e){ return mem[k]; } },
+    set(k,v){ try{ ok?localStorage.setItem(k,v):(mem[k]=v); }catch(e){ mem[k]=v; } }
+  };
+})();
+
+/* ---------- state ---------- */
+const S = {
+  recording:false, armed:false, t0:0, dur:10,
+  samples:[],            // {t, x, y, z} raw, t in ms from start
+  axis:2, hp:1, hann:true, autostop:true,
+  rate:0, analysis:null, // analysis result object
+  runs:[], counter:1, baseline:null, restOK:false
+};
+
+/* ---------- elements ---------- */
+const $=id=>document.getElementById(id);
+const timeCv=$("timeCanvas"), fftCv=$("fftCanvas");
+const tctx=timeCv.getContext("2d"), fctx=fftCv.getContext("2d");
+
+/* ---------- canvas sizing (HiDPI) ---------- */
+function fit(cv,ctx){
+  const dpr=window.devicePixelRatio||1;
+  const w=cv.clientWidth, h=cv.clientHeight||190;
+  cv.width=w*dpr; cv.height=h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {w,h};
+}
+let TD=fit(timeCv,tctx), FD=fit(fftCv,fctx);
+window.addEventListener("resize",()=>{ TD=fit(timeCv,tctx); FD=fit(fftCv,fctx); drawTime(); if(S.analysis) drawFFT(S.analysis); });
+
+/* ---------- secure-context / sensor availability check ---------- */
+function checkEnv(){
+  const w=$("secureWarn"); let msg="";
+  if(!window.isSecureContext && location.protocol!=="file:")
+    msg="Motion sensors need a secure page. Host this file on HTTPS (e.g. GitHub Pages) or open via localhost.";
+  if(typeof DeviceMotionEvent==="undefined")
+    msg="This browser exposes no motion sensor. Use Chrome on the Fairphone 6.";
+  if(msg){ w.textContent=msg; w.classList.remove("hidden"); }
+}
+checkEnv();
+
+/* ---------- sensor handling ---------- */
+let lastSampleMs=0;
+function onMotion(e){
+  if(!S.recording) return;
+  const a=e.acceleration && e.acceleration.x!==null ? e.acceleration : null;
+  let x,y,z;
+  if(a){ x=a.x||0; y=a.y||0; z=a.z||0; }      // gravity removed by OS
+  else { const g=e.accelerationIncludingGravity||{}; x=g.x||0; y=g.y||0; z=g.z||0; } // fallback (mean removed later)
+  const t=performance.now()-S.t0;
+  S.samples.push({t,x,y,z});
+  lastSampleMs=t;
+  // live readout + rest detection
+  const mag=Math.sqrt(x*x+y*y+z*z);
+  $("liveReadout").innerHTML = axisLabel()+" <span>"+pick({x,y,z}).toFixed(3)+"</span> m/s²";
+  if(S.armed && !S.restOK){
+    // need a short quiet window before the impact
+    if(S.samples.length>8){
+      const recent=S.samples.slice(-8).map(s=>pick(s));
+      const sd=std(recent);
+      if(sd<0.06){ S.restOK=true; setStatus("rec","Rest detected — do the heel drop now"); }
+    }
+  }
+}
+function pick(s){ if(S.axis===3) return Math.sqrt(s.x*s.x+s.y*s.y+s.z*s.z); return [s.x,s.y,s.z][S.axis]; }
+function axisLabel(){ return ["x","y","z","|a|"][S.axis]; }
+function std(arr){ const m=arr.reduce((a,b)=>a+b,0)/arr.length; return Math.sqrt(arr.reduce((a,b)=>a+(b-m)*(b-m),0)/arr.length); }
+
+async function startRecording(){
+  S.samples=[]; S.restOK=false; S.analysis=null; S.rate=0;
+  $("resultsCard").classList.add("hidden");
+  // iOS-style permission (harmless on Android)
+  if(typeof DeviceMotionEvent!=="undefined" && typeof DeviceMotionEvent.requestPermission==="function"){
+    try{ const r=await DeviceMotionEvent.requestPermission(); if(r!=="granted"){ setStatus("","Motion permission denied"); return; } }
+    catch(e){ /* ignore */ }
+  }
+  window.addEventListener("devicemotion",onMotion);
+  S.recording=true; S.armed=true; S.t0=performance.now();
+  $("recBtn").classList.add("recording");
+  $("analyzeBtn").disabled=true;
+  $("screenTitle").textContent="Acceleration · time (live)";
+  setStatus("armed","Hold still — waiting for rest…");
+  tickTimer();
+  drawLoop();
+}
+function stopRecording(){
+  if(!S.recording) return;
+  S.recording=false; S.armed=false;
+  window.removeEventListener("devicemotion",onMotion);
+  $("recBtn").classList.remove("recording");
+  $("screenTitle").textContent="Acceleration · time";
+  // estimate rate
+  if(S.samples.length>4){
+    const span=(S.samples[S.samples.length-1].t - S.samples[0].t)/1000;
+    S.rate = (S.samples.length-1)/span;
+    $("rateTag").textContent = S.rate.toFixed(1)+" Hz";
+    setStatus("done", S.samples.length+" samples @ "+S.rate.toFixed(0)+" Hz — press Analyze");
+    $("analyzeBtn").disabled=false;
+  } else {
+    setStatus("","Too few samples — sensor may be blocked. Check HTTPS.");
+  }
+}
+function tickTimer(){
+  if(!S.recording) return;
+  const el=(performance.now()-S.t0)/1000;
+  $("dockTimer").textContent=el.toFixed(1)+" s";
+  if(S.autostop && el>=S.dur){ stopRecording(); $("dockInfo").innerHTML="Recorded<br><b>"+el.toFixed(1)+" s</b>"; return; }
+  requestAnimationFrame(tickTimer);
+}
+function setStatus(cls,txt){
+  const p=$("pill"); p.className="pill"+(cls?(" "+cls):"");
+  $("statusText").textContent=txt;
+}
+
+/* ---------- live trace drawing ---------- */
+function drawLoop(){ if(!S.recording) return; drawTime(); requestAnimationFrame(drawLoop); }
+function drawTime(){
+  const {w,h}=TD; tctx.clearRect(0,0,w,h);
+  // grid
+  tctx.strokeStyle="#333a44"; tctx.lineWidth=1;
+  for(let i=0;i<=4;i++){ const y=h*i/4; tctx.beginPath(); tctx.moveTo(0,y); tctx.lineTo(w,y); tctx.stroke(); }
+  const data=S.analysis?S.analysis.win:S.samples;
+  if(!data || data.length<2) return;
+  const t0=data[0].t, t1=data[data.length-1].t || 1;
+  // scale: find max abs across shown axes
+  let mx=0.5;
+  for(const s of data){ mx=Math.max(mx,Math.abs(s.x),Math.abs(s.y),Math.abs(s.z)); }
+  mx*=1.15;
+  const mid=h/2, sx=t=>w*(t-t0)/((t1-t0)||1), sy=v=>mid - v/mx*mid;
+  const cols=["#27c24c","#3b7be8","#e23b2e"], keys=["x","y","z"];
+  for(let k=0;k<3;k++){
+    tctx.strokeStyle=cols[k]; tctx.lineWidth=k===S.axis?1.8:1; tctx.globalAlpha=(S.axis<3&&k!==S.axis)?0.45:1;
+    tctx.beginPath();
+    for(let i=0;i<data.length;i++){ const X=sx(data[i].t), Y=sy(data[i][keys[k]]); i?tctx.lineTo(X,Y):tctx.moveTo(X,Y); }
+    tctx.stroke();
+  }
+  tctx.globalAlpha=1;
+  // scale label
+  tctx.fillStyle="#8a93a1"; tctx.font="10px 'IBM Plex Mono',monospace";
+  tctx.fillText("±"+mx.toFixed(1)+" m/s²",6,12);
+}
+
+/* ===================== DSP ===================== */
+function resample(samples,axis,fs){
+  // uniform grid by linear interpolation
+  const t0=samples[0].t, t1=samples[samples.length-1].t;
+  const dt=1000/fs, N=Math.max(2,Math.floor((t1-t0)/dt));
+  const out=new Float64Array(N); let j=0;
+  for(let i=0;i<N;i++){
+    const tt=t0+i*dt;
+    while(j<samples.length-2 && samples[j+1].t<tt) j++;
+    const a=samples[j], b=samples[Math.min(j+1,samples.length-1)];
+    const va=axVal(a,axis), vb=axVal(b,axis);
+    const f=(b.t===a.t)?0:(tt-a.t)/(b.t-a.t);
+    out[i]=va+(vb-va)*f;
+  }
+  return out;
+}
+function axVal(s,axis){ if(axis===3) return Math.sqrt(s.x*s.x+s.y*s.y+s.z*s.z); return [s.x,s.y,s.z][axis]; }
+function mean(a){ let m=0; for(let i=0;i<a.length;i++) m+=a[i]; return m/a.length; }
+function detrend(a){ const m=mean(a); const o=new Float64Array(a.length); for(let i=0;i<a.length;i++) o[i]=a[i]-m; return o; }
+function nextPow2(n){ let p=1; while(p<n) p<<=1; return p; }
+
+function fft(re,im){
+  const N=re.length;
+  for(let i=1,j=0;i<N;i++){ let bit=N>>1; for(;j&bit;bit>>=1) j^=bit; j^=bit;
+    if(i<j){ let tr=re[i];re[i]=re[j];re[j]=tr; let ti=im[i];im[i]=im[j];im[j]=ti; } }
+  for(let len=2;len<=N;len<<=1){
+    const ang=-2*Math.PI/len, wr=Math.cos(ang), wi=Math.sin(ang);
+    for(let i=0;i<N;i+=len){ let cr=1,ci=0;
+      for(let k=0;k<len/2;k++){
+        const ur=re[i+k], ui=im[i+k];
+        const vr=re[i+k+len/2]*cr-im[i+k+len/2]*ci, vi=re[i+k+len/2]*ci+im[i+k+len/2]*cr;
+        re[i+k]=ur+vr; im[i+k]=ui+vi; re[i+k+len/2]=ur-vr; im[i+k+len/2]=ui-vi;
+        const ncr=cr*wr-ci*wi; ci=cr*wi+ci*wr; cr=ncr;
+      } }
+  }
+}
+function ifft(re,im){ const N=re.length; for(let i=0;i<N;i++) im[i]=-im[i]; fft(re,im);
+  for(let i=0;i<N;i++){ re[i]/=N; im[i]=-im[i]/N; } }
+
+function analyze(){
+  if(S.samples.length<8 || S.rate<=0){ return; }
+  const fs=S.rate;
+  let sig=resample(S.samples,S.axis,fs);
+  // RMS over whole window (raw, as thesis: sqrt(mean(a^2)))
+  let sq=0; for(let i=0;i<sig.length;i++) sq+=sig[i]*sig[i];
+  const aRMS=Math.sqrt(sq/sig.length);
+  // detrend for spectral work
+  let d=detrend(sig);
+  const N0=d.length, N=nextPow2(N0);
+  // window
+  const re=new Float64Array(N), im=new Float64Array(N);
+  for(let i=0;i<N0;i++){ let wv=1; if(S.hann) wv=0.5-0.5*Math.cos(2*Math.PI*i/(N0-1)); re[i]=d[i]*wv; }
+  fft(re,im);
+  const half=N>>1;
+  const df=fs/N;
+  const amp=new Float64Array(half);
+  for(let i=0;i<half;i++) amp[i]=2/N0*Math.sqrt(re[i]*re[i]+im[i]*im[i]);
+  // peak search above high-pass cutoff, below Nyquist
+  let pk=-1, pkv=-1; const lo=Math.max(1,Math.ceil(S.hp/df));
+  for(let i=lo;i<half;i++){ if(amp[i]>pkv){ pkv=amp[i]; pk=i; } }
+  // parabolic interpolation for sub-bin precision
+  let f1=pk*df;
+  if(pk>0 && pk<half-1){ const a0=amp[pk-1],a1=amp[pk],a2=amp[pk+1]; const den=(a0-2*a1+a2);
+    if(den!==0){ const dlt=0.5*(a0-a2)/den; f1=(pk+dlt)*df; } }
+
+  // ----- band-pass around f1 (freq-domain) then IFFT for free-decay -----
+  const bw=0.35; // ±35%
+  const rb=new Float64Array(N), ib=new Float64Array(N);
+  for(let i=0;i<N0;i++){ rb[i]=d[i]; } // no window for reconstruction
+  fft(rb,ib);
+  const f1lo=f1*(1-bw), f1hi=f1*(1+bw);
+  for(let i=0;i<N;i++){ const fbin=(i<=half? i*df : (i-N)*df); const fa=Math.abs(fbin);
+    if(fa<f1lo || fa>f1hi){ rb[i]=0; ib[i]=0; } }
+  ifft(rb,ib);
+  const filt=new Float64Array(N0); for(let i=0;i<N0;i++) filt[i]=rb[i];
+
+  // ----- damping via logarithmic decrement on filtered free decay -----
+  // find global max abs => impact; analyse decay after it
+  let imax=0,vmax=0; for(let i=0;i<N0;i++){ if(Math.abs(filt[i])>vmax){ vmax=Math.abs(filt[i]); imax=i; } }
+  // positive peaks after impact
+  const peaks=[]; // {i, t, w}
+  for(let i=imax+1;i<N0-1;i++){
+    if(filt[i]>0 && filt[i]>=filt[i-1] && filt[i]>filt[i+1]){
+      peaks.push({i, t:i/fs, w:filt[i]});
+    }
+  }
+  // keep decaying, significant peaks
+  const usable=peaks.filter(p=>p.w>vmax*0.10);
+  let lambda=NaN, zeta=NaN, nUsed=0;
+  if(usable.length>=2){
+    // average λ across successive pairs: λ = (1/n)·ln(W_i / W_{i+n})
+    let sum=0,c=0;
+    for(let k=0;k+1<usable.length;k++){
+      const ratio=usable[k].w/usable[k+1].w;
+      if(ratio>1.0001){ sum+=Math.log(ratio); c++; }
+    }
+    if(c>0){ lambda=sum/c; zeta=lambda/Math.sqrt((2*Math.PI)*(2*Math.PI)+lambda*lambda); nUsed=c+1; }
+  }
+  // ----- envelope exponential fit cross-check: ln(W) = b - (ζω)t -----
+  let zetaEnv=NaN;
+  if(usable.length>=3){
+    let sx=0,sy=0,sxx=0,sxy=0,n=usable.length;
+    for(const p of usable){ const x=p.t, y=Math.log(p.w); sx+=x; sy+=y; sxx+=x*x; sxy+=x*y; }
+    const slope=(n*sxy-sx*sy)/(n*sxx-sx*sx); // = -ζω
+    const omega=2*Math.PI*f1;
+    if(omega>0) zetaEnv=Math.max(0,-slope/omega);
+  }
+
+  // window object for plotting time trace (downsample-safe)
+  const win=S.samples;
+  S.analysis={ fs, f1, amp, df, half, aRMS, lambda, zeta, zetaEnv, nUsed,
+               filt, imax, peaks:usable, axis:S.axis };
+  renderResults();
+  drawFFT(S.analysis);
+}
+
+/* ---------- render results ---------- */
+function renderResults(){
+  const a=S.analysis; $("resultsCard").classList.remove("hidden");
+  $("rF1").innerHTML=a.f1.toFixed(2)+"<small> Hz</small>";
+  $("rZeta").innerHTML=(isFinite(a.zeta)?(a.zeta*100).toFixed(2):"—")+"<small> %</small>";
+  $("rZetaEnv").innerHTML=(isFinite(a.zetaEnv)?(a.zetaEnv*100).toFixed(2):"—")+"<small> %</small>";
+  $("rLambda").innerHTML=(isFinite(a.lambda)?a.lambda.toFixed(4):"—");
+  $("rPeaks").innerHTML=(a.nUsed||"—");
+  $("rRms").innerHTML=a.aRMS.toFixed(3)+"<small> m/s²</small>";
+  $("rRate").innerHTML=a.fs.toFixed(1)+"<small> Hz</small>";
+  $("peakTag").textContent="peak "+a.f1.toFixed(2)+" Hz";
+  $("fftAxisTag").textContent=["x-axis","y-axis","z-axis","magnitude"][a.axis];
+  $("rmsNote").innerHTML = isFinite(a.zeta)
+    ? "Damping from log. decrement over "+a.nUsed+" peaks of the band-passed fundamental mode. Note: phone a<sub>RMS</sub> is indicative only — your thesis found smartphone accelerometers reliable for f₁ but not for absolute RMS."
+    : "Couldn't isolate a clean decay for damping — try a harder, cleaner single heel drop and a longer record window.";
+}
+
+function drawFFT(a){
+  const {w,h}=FD; fctx.clearRect(0,0,w,h);
+  const fmax=30, padL=4, padB=14;
+  const plotW=w-padL, plotH=h-padB;
+  // grid + ticks every 5 Hz
+  fctx.strokeStyle="#333a44"; fctx.fillStyle="#8a93a1"; fctx.font="9px 'IBM Plex Mono',monospace"; fctx.lineWidth=1;
+  for(let f=0;f<=fmax;f+=5){ const x=padL+plotW*f/fmax;
+    fctx.beginPath(); fctx.moveTo(x,0); fctx.lineTo(x,plotH); fctx.stroke();
+    fctx.fillText(f,x+2,h-3); }
+  // find max amp within 0..fmax for scaling
+  const nMax=Math.min(a.half, Math.floor(fmax/a.df));
+  let ymax=1e-6; for(let i=1;i<nMax;i++) ymax=Math.max(ymax,a.amp[i]);
+  // spectrum line
+  fctx.strokeStyle="#3b7be8"; fctx.lineWidth=1.8; fctx.beginPath();
+  for(let i=0;i<nMax;i++){ const f=i*a.df; const x=padL+plotW*f/fmax; const y=plotH-(a.amp[i]/ymax)*plotH;
+    i?fctx.lineTo(x,y):fctx.moveTo(x,y); }
+  fctx.stroke();
+  // peak marker
+  const px=padL+plotW*Math.min(a.f1,fmax)/fmax;
+  fctx.strokeStyle="#e23b2e"; fctx.setLineDash([3,3]); fctx.beginPath(); fctx.moveTo(px,0); fctx.lineTo(px,plotH); fctx.stroke(); fctx.setLineDash([]);
+  fctx.fillStyle="#e23b2e"; fctx.font="10px 'IBM Plex Mono',monospace"; fctx.fillText(a.f1.toFixed(2)+" Hz",Math.min(px+4,w-52),12);
+}
+
+/* ===================== CSV ===================== */
+function runToCSV(run){
+  let s="time_ms,acc_x,acc_y,acc_z\n";
+  for(const p of run.samples) s+=p.t.toFixed(2)+","+p.x.toFixed(5)+","+p.y.toFixed(5)+","+p.z.toFixed(5)+"\n";
+  return s;
+}
+function download(name,text){
+  const blob=new Blob([text],{type:"text/csv"}); const url=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },300);
+}
+
+/* ===================== runs persistence ===================== */
+function loadRuns(){ try{ const r=Store.get("fv_runs"); S.runs=r?JSON.parse(r):[]; const c=Store.get("fv_counter"); S.counter=c?+c:(S.runs.length+1); }catch(e){ S.runs=[]; } renderRuns(); }
+function saveRuns(){ Store.set("fv_runs",JSON.stringify(S.runs)); Store.set("fv_counter",String(S.counter)); }
+function renderRuns(){
+  const el=$("runsList");
+  if(!S.runs.length){ el.innerHTML='<div class="empty">No runs saved yet.</div>'; $("exportAllBtn").disabled=true; $("clearBtn").disabled=true; return; }
+  $("exportAllBtn").disabled=false; $("clearBtn").disabled=false;
+  el.innerHTML="";
+  S.runs.forEach((r,idx)=>{
+    const d=document.createElement("div"); d.className="run";
+    d.innerHTML='<span class="id">#'+r.id+'</span><span class="meta">f₁ <b>'+r.f1.toFixed(2)+' Hz</b> · ζ <b>'+(isFinite(r.zeta)?(r.zeta*100).toFixed(2)+'%':'—')+'</b> · '+r.rate.toFixed(0)+' Hz · '+r.samples.length+' pts</span>';
+    const dl=document.createElement("button"); dl.textContent="⤓"; dl.title="Export CSV"; dl.onclick=()=>download("heeldrop_run"+r.id+".csv",runToCSV(r));
+    const del=document.createElement("button"); del.textContent="✕"; del.title="Delete"; del.onclick=()=>{ S.runs.splice(idx,1); saveRuns(); renderRuns(); };
+    d.appendChild(dl); d.appendChild(del); el.appendChild(d);
+  });
+}
+
+/* ===================== wiring ===================== */
+$("recBtn").onclick=()=>{ S.recording?stopRecording():startRecording(); };
+$("analyzeBtn").onclick=analyze;
+document.querySelectorAll("#axisSeg button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("#axisSeg button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on"); S.axis=+b.dataset.ax; drawTime(); if(S.samples.length>4){ /* allow re-analyze */ }
+});
+$("durInput").onchange=e=>S.dur=Math.max(2,+e.target.value||10);
+$("hpInput").onchange=e=>S.hp=Math.max(0,+e.target.value||0);
+$("hannChk").onchange=e=>S.hann=e.target.checked;
+$("autostopChk").onchange=e=>S.autostop=e.target.checked;
+$("saveRunBtn").onclick=()=>{
+  if(!S.analysis) return;
+  const a=S.analysis;
+  S.runs.unshift({ id:S.counter++, samples:S.samples.slice(), f1:a.f1, zeta:a.zeta, zetaEnv:a.zetaEnv, lambda:a.lambda, aRMS:a.aRMS, rate:a.fs, axis:a.axis, ts:Date.now() });
+  saveRuns(); renderRuns();
+  $("saveRunBtn").textContent="Saved ✓"; setTimeout(()=>$("saveRunBtn").textContent="Save this run",1400);
+};
+$("exportCurrentBtn").onclick=()=>{ if(S.samples.length) download("heeldrop_current.csv",runToCSV({samples:S.samples})); };
+$("exportAllBtn").onclick=()=>{
+  let s="run_id,axis,sample_rate_hz,n_samples,f1_hz,zeta_logdec,zeta_envelope,lambda,aRMS_ms2\n";
+  for(const r of S.runs) s+=r.id+","+["x","y","z","mag"][r.axis]+","+r.rate.toFixed(2)+","+r.samples.length+","+r.f1.toFixed(3)+","+(isFinite(r.zeta)?r.zeta.toFixed(5):"")+","+(isFinite(r.zetaEnv)?r.zetaEnv.toFixed(5):"")+","+(isFinite(r.lambda)?r.lambda.toFixed(5):"")+","+r.aRMS.toFixed(4)+"\n";
+  download("heeldrop_summary.csv",s);
+};
+$("clearBtn").onclick=()=>{ if(confirm("Delete all saved runs?")){ S.runs=[]; saveRuns(); renderRuns(); } };
+
+loadRuns(); drawTime();
+</script>
+</body>
+</html>
