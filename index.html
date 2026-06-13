@@ -166,6 +166,7 @@
     </div>
     <div class="results">
       <div class="metric hero"><div class="k">Fundamental frequency f₁</div><div class="v" id="rF1">—<small> Hz</small></div></div>
+      <div class="metric wide"><div class="k">Top spectral peaks (by amplitude)</div><div id="rPeaksList" style="font-family:'IBM Plex Mono',monospace; font-size:15px; margin-top:5px; display:flex; flex-direction:column; gap:3px">—</div></div>
       <div class="metric"><div class="k">Damping ζ (log. decr.)</div><div class="v" id="rZeta">—<small> %</small></div></div>
       <div class="metric"><div class="k">ζ (envelope fit)</div><div class="v" id="rZetaEnv">—<small> %</small></div></div>
       <div class="metric"><div class="k">Log. decrement λ</div><div class="v" id="rLambda">—</div></div>
@@ -239,7 +240,7 @@
 <div class="dock">
   <div class="dock-inner">
     <button class="rec-btn" id="recBtn" aria-label="Record"></button>
-    <div class="dock-info" id="dockInfo">Ready<br><b id="dockTimer">0.0 s</b></div>
+    <div class="dock-info" id="dockInfo"><span id="dockLabel">Ready</span><br><b id="dockTimer">0.0 s</b></div>
     <button class="btn" id="analyzeBtn" disabled>Analyze</button>
   </div>
 </div>
@@ -328,6 +329,7 @@ async function startRecording(){
   window.addEventListener("devicemotion",onMotion);
   S.recording=true; S.armed=true; S.t0=performance.now();
   $("recBtn").classList.add("recording");
+  $("dockLabel").textContent="Recording"; $("dockTimer").textContent="0.0 s";
   $("analyzeBtn").disabled=true;
   $("screenTitle").textContent="Acceleration · time (live)";
   setStatus("armed","Hold still — waiting for rest…");
@@ -346,6 +348,7 @@ function stopRecording(){
     S.rate = (S.samples.length-1)/span;
     $("rateTag").textContent = S.rate.toFixed(1)+" Hz";
     setStatus("done", S.samples.length+" samples @ "+S.rate.toFixed(0)+" Hz — press Analyze");
+    $("dockLabel").textContent="Recorded";
     $("analyzeBtn").disabled=false;
   } else {
     setStatus("","Too few samples — sensor may be blocked. Check HTTPS.");
@@ -355,7 +358,7 @@ function tickTimer(){
   if(!S.recording) return;
   const el=(performance.now()-S.t0)/1000;
   $("dockTimer").textContent=el.toFixed(1)+" s";
-  if(S.autostop && el>=S.dur){ stopRecording(); $("dockInfo").innerHTML="Recorded<br><b>"+el.toFixed(1)+" s</b>"; return; }
+  if(S.autostop && el>=S.dur){ stopRecording(); return; }
   requestAnimationFrame(tickTimer);
 }
 function setStatus(cls,txt){
@@ -456,6 +459,28 @@ function analyze(){
   if(pk>0 && pk<half-1){ const a0=amp[pk-1],a1=amp[pk],a2=amp[pk+1]; const den=(a0-2*a1+a2);
     if(den!==0){ const dlt=0.5*(a0-a2)/den; f1=(pk+dlt)*df; } }
 
+  // ----- top spectral peaks (local maxima, parabolic-interpolated) -----
+  const cand=[];
+  for(let i=lo+1;i<half-1;i++){
+    if(amp[i]>amp[i-1] && amp[i]>=amp[i+1]){
+      let fc=i*df, ac=amp[i];
+      const a0=amp[i-1],a1=amp[i],a2=amp[i+1], den=(a0-2*a1+a2);
+      if(den!==0){ const dlt=0.5*(a0-a2)/den; fc=(i+dlt)*df; ac=a1-0.25*(a0-a2)*dlt; }
+      cand.push({f:fc, amp:ac});
+    }
+  }
+  cand.sort((p,q)=>q.amp-p.amp);
+  // noise-floor gate: keep peaks above max(3% of dominant, 4× median band amplitude)
+  const bandSorted=Array.from(amp.slice(lo,half)).sort((x,y)=>x-y);
+  const med=bandSorted.length?bandSorted[bandSorted.length>>1]:0;
+  const dom=cand.length?cand[0].amp:1;
+  const thr=Math.max(0.03*dom, 4*med);
+  const top=[], minSep=Math.max(1.0, 3*df);
+  for(const c of cand){ if(c.amp<thr) continue; if(top.every(t=>Math.abs(t.f-c.f)>minSep)) top.push(c); if(top.length>=3) break; }
+  const ampRef=top.length?top[0].amp:1;
+  const topPeaks=top.map(t=>({f:t.f, amp:t.amp, rel:t.amp/ampRef}));
+  if(topPeaks.length) f1=topPeaks[0].f;   // dominant peak = fundamental f1
+
   // ----- band-pass around f1 (freq-domain) then IFFT for free-decay -----
   const bw=0.35; // ±35%
   const rb=new Float64Array(N), ib=new Float64Array(N);
@@ -501,7 +526,7 @@ function analyze(){
 
   // window object for plotting time trace (downsample-safe)
   const win=S.samples;
-  S.analysis={ fs, f1, amp, df, half, aRMS, lambda, zeta, zetaEnv, nUsed,
+  S.analysis={ fs, f1, amp, df, half, aRMS, lambda, zeta, zetaEnv, nUsed, topPeaks,
                filt, imax, peaks:usable, axis:S.axis };
   renderResults();
   drawFFT(S.analysis);
@@ -515,6 +540,10 @@ function renderResults(){
   $("rZetaEnv").innerHTML=(isFinite(a.zetaEnv)?(a.zetaEnv*100).toFixed(2):"—")+"<small> %</small>";
   $("rLambda").innerHTML=(isFinite(a.lambda)?a.lambda.toFixed(4):"—");
   $("rPeaks").innerHTML=(a.nUsed||"—");
+  const tp=a.topPeaks||[];
+  $("rPeaksList").innerHTML = tp.length
+    ? tp.map((p,i)=>'<div style="display:flex; justify-content:space-between; gap:12px"><span><b style="color:'+(i===0?'#e23b2e':'#e0a32a')+'">'+(i+1)+'</b>&nbsp; '+p.f.toFixed(2)+' Hz</span><span style="color:var(--ink-soft)">'+Math.round(p.rel*100)+'%</span></div>').join('')
+    : '—';
   $("rRms").innerHTML=a.aRMS.toFixed(3)+"<small> m/s²</small>";
   $("rRate").innerHTML=a.fs.toFixed(1)+"<small> Hz</small>";
   $("peakTag").textContent="peak "+a.f1.toFixed(2)+" Hz";
@@ -541,10 +570,20 @@ function drawFFT(a){
   for(let i=0;i<nMax;i++){ const f=i*a.df; const x=padL+plotW*f/fmax; const y=plotH-(a.amp[i]/ymax)*plotH;
     i?fctx.lineTo(x,y):fctx.moveTo(x,y); }
   fctx.stroke();
-  // peak marker
-  const px=padL+plotW*Math.min(a.f1,fmax)/fmax;
-  fctx.strokeStyle="#e23b2e"; fctx.setLineDash([3,3]); fctx.beginPath(); fctx.moveTo(px,0); fctx.lineTo(px,plotH); fctx.stroke(); fctx.setLineDash([]);
-  fctx.fillStyle="#e23b2e"; fctx.font="10px 'IBM Plex Mono',monospace"; fctx.fillText(a.f1.toFixed(2)+" Hz",Math.min(px+4,w-52),12);
+  // peak markers (top 3)
+  const marks=(a.topPeaks&&a.topPeaks.length)?a.topPeaks:[{f:a.f1,rel:1}];
+  const mcol=["#e23b2e","#e0a32a","#e0a32a"];
+  fctx.font="10px 'IBM Plex Mono',monospace";
+  marks.forEach((p,idx)=>{
+    if(p.f>fmax) return;
+    const px=padL+plotW*p.f/fmax;
+    fctx.strokeStyle=mcol[idx]||"#e0a32a"; fctx.lineWidth=idx===0?1.6:1; fctx.setLineDash([3,3]);
+    fctx.beginPath(); fctx.moveTo(px,0); fctx.lineTo(px,plotH); fctx.stroke(); fctx.setLineDash([]);
+    fctx.fillStyle=mcol[idx]||"#e0a32a";
+    const lbl=(idx+1)+") "+p.f.toFixed(1);
+    let lx=px+4; if(lx>w-48) lx=px-46;
+    fctx.fillText(lbl, lx, 12+idx*12);
+  });
 }
 
 /* ===================== CSV ===================== */
